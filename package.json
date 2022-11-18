@@ -4,13 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "node mini-vite.js"
+    "dev": "nodemon mini-vite.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "koa": "^2.13.4",
+    "nodemon": "^2.0.20",
     "vue": "^3.2.45"
   }
 }
