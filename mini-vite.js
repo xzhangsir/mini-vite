@@ -4,9 +4,12 @@ const fs = require('fs')
 const path = require('path')
 //单文件处理是使用的是@vue/compiler-sfc模块进行编译处理的
 const compilerSfc = require('@vue//compiler-sfc')
+//处理模版的编译
+const compilerDom = require('@vue/compiler-dom')
 
 app.use(async (ctx) => {
   const { url, query } = ctx.request
+  // console.log('url', url)
   if (url === '/') {
     // 返回HTML
     ctx.type = 'text/html'
@@ -31,9 +34,10 @@ app.use(async (ctx) => {
     const file = fs.readFileSync(filePrefix + '/' + module, 'utf-8')
     ctx.body = rewirteImport(file)
   } else if (url.includes('.vue')) {
-    // 获得绝对路劲, url.slice(1)去掉第一个'/'
-    const filePath = path.resolve(__dirname, url.slice(1))
-    // console.log(filePath)
+    // 获得绝对路劲, url.slice(1)去掉第一个'/' 如果有?type=style等 取消掉
+    let idx = url.indexOf('?') > -1 ? url.indexOf('?') : url.length
+    const filePath = path.resolve(__dirname, url.slice(1, idx))
+
     const { descriptor } = compilerSfc.parse(fs.readFileSync(filePath, 'utf-8'))
     // console.log(descriptor)
     // 处理script
@@ -45,9 +49,6 @@ app.use(async (ctx) => {
         'export default ',
         'const __srcipt = '
       )
-      console.log(script)
-      console.log(rewirteImport(script))
-      console.log(url)
       // 返回App.vue解析结果
       ctx.type = 'text/javascript'
       ctx.body = `
@@ -59,6 +60,13 @@ app.use(async (ctx) => {
         __script.render = __render
         export default __script
       `
+    } else if (query.type == 'template') {
+      const templateContent = descriptor.template.content
+      const render = compilerDom.compile(templateContent, {
+        mode: 'module'
+      }).code
+      ctx.type = 'application/javascript'
+      ctx.body = rewirteImport(render)
     }
   }
 })

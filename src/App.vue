@@ -18,4 +18,7 @@ export default {
 #app {
   color: red;
 }
+.logo{
+  margin-top:10px;
+}
 </style>
