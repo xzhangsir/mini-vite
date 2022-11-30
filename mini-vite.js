@@ -1,17 +1,18 @@
 const Koa = require('koa')
-const app = new Koa()
 const fs = require('fs')
 const path = require('path')
 //单文件处理是使用的是@vue/compiler-sfc模块进行编译处理的
-const compilerSfc = require('@vue//compiler-sfc')
+const compilerSfc = require('@vue/compiler-sfc')
 //处理模版的编译
 const compilerDom = require('@vue/compiler-dom')
+
+const app = new Koa()
 
 app.use(async (ctx) => {
   const { url, query } = ctx.request
   // console.log('url', url)
   if (url === '/') {
-    // 返回HTML
+    // 返回首页HTML
     ctx.type = 'text/html'
     ctx.body = fs.readFileSync('./index.html', 'utf8')
   } else if (url.endsWith('.js')) {
@@ -20,6 +21,9 @@ app.use(async (ctx) => {
     ctx.type = 'text/javascript'
     const file = fs.readFileSync(jsPath, 'utf-8')
     // 裸模块替换成/@modules/包名，浏览器就会发起请求
+    // import { createApp, h } from 'vue'
+    // 替换为
+    // import { createApp, h } from "/@modules/vue"
     ctx.body = rewirteImport(file)
   } else if (url.startsWith('/@modules/')) {
     // 返回裸模快引用的node_modules/包名/package.json.module引用的真实文件
@@ -34,10 +38,9 @@ app.use(async (ctx) => {
     const file = fs.readFileSync(filePrefix + '/' + module, 'utf-8')
     ctx.body = rewirteImport(file)
   } else if (url.includes('.vue')) {
-    // 获得绝对路劲, url.slice(1)去掉第一个'/' 如果有?type=style等 取消掉
-    let idx = url.indexOf('?') > -1 ? url.indexOf('?') : url.length
-    const filePath = path.resolve(__dirname, url.slice(1, idx))
-
+    // 读取vue文件内容
+    const filePath = path.join(__dirname, url.split('?')[0])
+    // compilerSfc解析SFC，得到一个ast
     const { descriptor } = compilerSfc.parse(fs.readFileSync(filePath, 'utf-8'))
     // console.log(descriptor)
     // 处理script
@@ -47,16 +50,16 @@ app.use(async (ctx) => {
       // export default {...} 更改为  const __script = {...}
       const script = scriptContent.replace(
         'export default ',
-        'const __srcipt = '
+        'const __script = '
       )
       // 返回App.vue解析结果
       ctx.type = 'text/javascript'
       ctx.body = `
         ${rewirteImport(script)}
+        // 发送请求获取template部分,这里返回一个渲染函数
+        import { render as __render } from '${url}?type=template'
         // 如果有 style 就发送请求获取 style 的部分
         ${descriptor.styles.length ? `import "${url}?type=style"` : ''}
-        // 发送请求获取template部分，这儿返回一个渲染函数
-        import { render as __render } from '${url}?type=template'
         __script.render = __render
         export default __script
       `
@@ -65,8 +68,27 @@ app.use(async (ctx) => {
       const render = compilerDom.compile(templateContent, {
         mode: 'module'
       }).code
-      ctx.type = 'application/javascript'
+      ctx.type = 'text/javascript'
       ctx.body = rewirteImport(render)
+    } else if (query.type == 'style') {
+      const styles = descriptor.styles
+      let css = ''
+      if (styles.length > 0) {
+        styles.forEach((o, i) => {
+          css += `${o.content.replace(/[\n\r]/g, '')}`
+        })
+      }
+      // console.log(styles)
+      const content = `
+        const css = "${css}"
+        let link = document.createElement('style')
+        link.setAttribute('type', 'text/css')
+        document.head.appendChild(link)
+        link.innerHTML = css
+        export default css
+    `
+      ctx.type = 'application/javascript'
+      ctx.body = content
     }
   }
 })
